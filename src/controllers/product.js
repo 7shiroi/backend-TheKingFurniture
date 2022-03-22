@@ -52,7 +52,7 @@ exports.getAllProduct = async (req, res) => {
 exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
-    return responseHandler(res, 200, 'Product created', product)
+    return responseHandler(res, 200, 'Product created', product);
   } catch (e) {
     const errMessage = e.errors.map((err) => ({ field: err.path, message: err.message }));
     return responseHandler(res, 400, 'Can\'t create product', errMessage, null);
@@ -73,9 +73,9 @@ exports.updateProduct = async (req, res) => {
     const { id } = req.params;
     const product = await Product.findByPk(id);
     if (product && product.dataValues.is_deleted === false) {
-      for(const key in req.body) {
-        product[key] = req.body[key];
-      }
+      Object.keys(req.body).forEach((data) => {
+        product[data] = req.body[data];
+      });
       await product.save();
       return responseHandler(res, 200, 'Product updated', product, null);
     }
