@@ -1,98 +1,88 @@
 const Sequelize = require('sequelize');
+const responseHandler = require('../helpers/responseHandler');
 const Product = require('../models/product');
+
+const { APP_URL } = process.env;
 
 exports.getAllProduct = async (req, res) => {
   const { search = '' } = req.query;
+  let {
+    minPrice, maxPrice, limit, page,
+  } = req.query;
+  minPrice = parseInt(minPrice, 10) || 0;
+  maxPrice = parseInt(maxPrice, 10) || 100000000;
+  limit = parseInt(limit, 10) || 5;
+  page = parseInt(page, 10) || 1;
+  const dataName = ['search', 'minPrice', 'maxPrice'];
+  const data = { search, minPrice, maxPrice };
+  let url = `${APP_URL}/product?`;
+  dataName.forEach((x) => {
+    if (req.query[x]) {
+      data[x] = req.query[x];
+      url = `${url}${x}=${data[x]}&`;
+    }
+  });
+  const offset = (page - 1) * limit;
   const results = await Product.findAll({
     where: {
       name: {
         [Sequelize.Op.like]: `%${search}%`,
       },
+      price: {
+        [Sequelize.Op.gte]: minPrice,
+        [Sequelize.Op.lte]: maxPrice,
+      },
       is_deleted: 0,
     },
-    limit: 5,
-    offset: 0,
+    limit,
+    offset,
   });
-  return res.send({
-    success: true,
-    message: 'List all product',
-    results,
-  });
+  const count = await Product.count();
+  const last = Math.ceil(count / limit);
+  const pageInfo = {
+    prev: page > 1 ? `${url}page=${page - 1}&limit=${limit}` : null,
+    next: page < last ? `${url}page=${page + 1}&limit=${limit}` : null,
+    totalData: count,
+    currentPage: page,
+    lastPage: last,
+  };
+  return responseHandler(res, 200, 'List of products', results, pageInfo);
 };
 
 exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
-    return res.send({
-      success: true,
-      message: 'Product created!',
-      results: product,
-    });
+    return responseHandler(res, 200, 'Product created', product)
   } catch (e) {
-    return res.status(400).send({
-      success: false,
-      message: 'Cant create product',
-      results: e.errors.map((err) => ({ field: err.path, message: err.message })),
-    });
+    const errMessage = e.errors.map((err) => ({ field: err.path, message: err.message }));
+    return responseHandler(res, 400, 'Can\'t create product', errMessage, null);
   }
 };
-
-// exports.updateproduct = async (req, res)=> {
-//     const {id} = req.params
-//     const product = await product.findByPk(id)
-//     if(product){
-//         for(let key in req.body){
-//             product[key] = req.body[key]
-//         }
-//         await product.save()
-//         return res.send({
-//             success: true,
-//             message: "product updated!",
-//             results: product
-//         })
-//     }else{
-//         return res.status(404).send({
-//             success: false,
-//             message: "product post not found!"
-//         })
-//     }
-// }
 
 exports.productDetail = async (req, res) => {
   const { id } = req.params;
   const product = await Product.findByPk(id);
-  if (product) {
-    return res.send({
-      success: true,
-      message: 'product Detail',
-      results: product,
-    });
-  } else{
-    return res.status(404).send({
-      success: false,
-      message: 'product not found!',
-    });
-  };
+  if (product && product.is_deleted === false) {
+    return responseHandler(res, 200, 'Product detail', product, null);
+  }
+  return responseHandler(res, 404, 'Product not found', null, null);
 };
 
 exports.updateProduct = async (req, res) => {
-  const { id } = req.params;
-  const product = await Product.findByPk(id);
-  if (product && product.dataValues.is_deleted === false) {
-    for(const key in req.body) {
-      product[key] = req.body[key];
+  try {
+    const { id } = req.params;
+    const product = await Product.findByPk(id);
+    if (product && product.dataValues.is_deleted === false) {
+      for(const key in req.body) {
+        product[key] = req.body[key];
+      }
+      await product.save();
+      return responseHandler(res, 200, 'Product updated', product, null);
     }
-    await product.save();
-    return res.send({
-      success: true,
-      message: 'product Updated',
-      results: product,
-    });
-  } else {
-    return res.status(404).send({
-      success: false,
-      message: 'product not found!',
-    });
+    return responseHandler(res, 404, 'Product not found', null, null);
+  } catch (e) {
+    const errMessage = e.errors.map((err) => ({ field: err.path, message: err.message }));
+    return responseHandler(res, 400, 'Can\'t update product', errMessage, null);
   }
 };
 
@@ -102,14 +92,7 @@ exports.deleteProduct = async (req, res) => {
   if (product && product.dataValues.is_deleted === false) {
     product.is_deleted = 1;
     await product.save();
-    return res.send({
-      success: true,
-      message: 'product deleted',
-    });
-  } else {
-    return res.status(404).send({
-      success: false,
-      message: 'product not found!',
-    });
+    return responseHandler(res, 200, 'Product was deleted', null, null);
   }
+  return responseHandler(res, 404, 'Product not found', null, null);
 };
